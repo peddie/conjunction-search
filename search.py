@@ -437,7 +437,7 @@ def float_to_lon_string(value):
 
 
 def parse_date(s):
-    return datetime.datetime.strptime(s, '%Y-%m-%d')
+    return datetime.strptime(s, '%Y-%m-%d')
 
 
 def get_args():
