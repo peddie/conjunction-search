@@ -328,6 +328,7 @@ def scan_night(site, day, constraint):
     sunset, sunrise = site.next_set_rise(day)
 
     conjunctions = {}
+    num_conjunctions = len(solar_system) * len(sky_objects)
     for t in tqdm(datetime_range(sunset, sunrise, dt),
                   desc='Time windows', unit='win', leave=None,
                   total=len(list(datetime_range(sunset, sunrise, dt)))):
@@ -340,7 +341,8 @@ def scan_night(site, day, constraint):
                              for p in solar_system
                              for q in sky_objects
                              if p != q),
-                            desc='Conjunctions scanned', unit='conj', leave=None)
+                            desc='Conjunctions scanned', unit='conj', leave=None,
+                            total=num_conjunctions)
             if c.valid()
 
         ]
@@ -375,7 +377,7 @@ def scan_days(location, t0_, t1_, constraint=Constraint(5.0, 1 * np.pi / 180, 3.
     print(f"[   SEARCH] This will take a while!")
     calc_times = []
     for day in tqdm(datetime_range(t0, t1, dday),
-                    desc='Nights', unit='n', leave=None,
+                    desc='Nights', unit='night', leave=None,
                     total=len(list(datetime_range(t0, t1, dday)))):
         best_conjunctions[day], calc_time = scan_night(location, day, constraint)
         calc_times.append(calc_time)
