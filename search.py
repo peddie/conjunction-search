@@ -22,6 +22,38 @@ def datetime_range(start, end, delta):
         current += delta
 
 
+def ll_string_to_float(string):
+    cardinal = ''.join(c for c in string if c in "nsewNSEW")
+    magnitude = ''.join(c for c in string if c.isdigit() or c == '.')
+    sign = 1
+    if cardinal in "sSwW":
+        sign = -1
+
+    return sign * float(magnitude)
+
+
+def float_to_lat_string(value):
+    cardinal = 'N'
+    if value < 0:
+        cardinal = 'S'
+
+    magnitude = str(abs(value))
+    return f"{magnitude} {cardinal}"
+
+
+def float_to_lon_string(value):
+    cardinal = 'E'
+    if value < 0:
+        cardinal = 'W'
+
+    magnitude = str(abs(value))
+    return f"{magnitude} {cardinal}"
+
+
+def parse_date(s):
+    return datetime.strptime(s, '%Y-%m-%d')
+
+
 def angular_distance(va, vb):
     dlambda = np.fabs(vb[1].radians - va[1].radians)
     phi1 = va[0].radians
@@ -406,38 +438,6 @@ def display_results(results, site, t0, t1, best=5):
             print(sort_conjunctions_by_score(conjunctions))
         else:
             print(sort_conjunctions_by_score(conjunctions)[0:best])
-
-
-def ll_string_to_float(string):
-    cardinal = ''.join(c for c in string if c in "nsewNSEW")
-    magnitude = ''.join(c for c in string if c.isdigit() or c == '.')
-    sign = 1
-    if cardinal in "sSwW":
-        sign = -1
-
-    return sign * float(magnitude)
-
-
-def float_to_lat_string(value):
-    cardinal = 'N'
-    if value < 0:
-        cardinal = 'S'
-
-    magnitude = str(abs(value))
-    return f"{magnitude} {cardinal}"
-
-
-def float_to_lon_string(value):
-    cardinal = 'E'
-    if value < 0:
-        cardinal = 'W'
-
-    magnitude = str(abs(value))
-    return f"{magnitude} {cardinal}"
-
-
-def parse_date(s):
-    return datetime.strptime(s, '%Y-%m-%d')
 
 
 def get_args():
