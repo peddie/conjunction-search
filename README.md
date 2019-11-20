@@ -6,7 +6,16 @@ Searches for astronomical conjunctions.
 Requirements
 ------------
 
-You will have to get a bunch of SPICE kernels from JPL:
+It's written in python 3.  You can get the needed libraries by
+
+    pip install -r requirements.txt
+
+You might have to either prefix this with `sudo` or also use the `--user` flag;
+I haven't yet understood the right approach, if one exists.
+
+You will have to get a bunch of SPICE kernels from JPL.  In theory the program
+should fetch all this stuff itself when run, but this functionality has been
+pretty unreliable for me -- consider yourself warned.
 
 ```
 $ grep bsp search.py
@@ -18,13 +27,17 @@ $ grep bsp search.py
         SolarSystemBody('Uranus', load('ura111.bsp')['uranus'], ephem.Uranus()),
         SolarSystemBody('Neptune', load('nep081.bsp')['neptune'], ephem.Neptune()),
         SolarSystemBody('Pluto', load('plu055.bsp')['pluto'], ephem.Pluto()),
-
 ```
 
-Then go ahead and do a search (takes a WHILE):
+It will also fetch the Hipparcos catalog and some leap second and EOP data.
+
+Running
+-------
+
+Go ahead and do a search (takes a WHILE):
 
     python3 search.py
 
-Find out how to control the search:
+Find out more, including how to control the search:
 
     python3 search.py --help
