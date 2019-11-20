@@ -60,9 +60,11 @@ class Observation:
         # Compute right at the get-go
         self.radius = radius
         self.magnitude = magnitude
+        # This is also precomputed due to the location precomputation thing
+        self.apparent_alt_az = self.site.apparent_alt_az(self.t, self.obj)
 
     def alt_az(self):
-        return self.site.apparent_alt_az(self.t, self.obj)
+        return self.apparent_alt_az
 
     def apparent_magnitude(self):
         return self.magnitude
@@ -95,6 +97,21 @@ class Observation:
         return self.obj
 
 
+class LocationCacheError(Exception):
+    def __init__(self, cached_time, current_time):
+        self.cached_time = cached_time
+        self.current_time = current_time
+
+    def __str__(self):
+        return f"""LocationCacheError:
+Cached location is for {self.cached_time}
+Attempted observation is for {self.current_time}
+Please call 'set_t()' to update the location cache before observing!
+"""
+    def __repr__(self):
+        return self.__str__()
+
+
 class Site:
     def __init__(self, lat, lon, name):
         self.topos = Topos(lat, lon)
@@ -111,8 +128,25 @@ class Site:
     def localize(self, some_time):
         return self.timezone.localize(some_time)
 
+    def set_t(self, t):
+        """Hack to reduce computation time.  Whenever we start computing conjunctions
+        for a new time t, we precompute our location here.  Then in
+        `apparent_alt_az()`, we use this cached location object.  This is
+        extremely ugly, but it results in a >3x speedup in conjunctions per
+        second.
+
+        """
+        self.location_at_t = self.location.at(self.ts.utc(t))
+        self.cached_t = t
+
     def apparent_alt_az(self, t, obj):
-        alt, az, _ = self.location.at(self.ts.utc(t)).observe(obj.skyfield_obj).apparent().altaz()
+        """See the hack documented in `set_t()` to learn why `t` is not used here.
+
+        """
+        if t is not self.cached_t:
+            raise LocationCacheError(self.cached_t, t)
+
+        alt, az, _ = self.location_at_t.observe(obj.skyfield_obj).apparent().altaz()
         return (alt, az)
 
     def observe(self, t, obj):
@@ -294,6 +328,7 @@ def scan_night(site, day, constraint):
     for t in tqdm(datetime_range(sunset, sunrise, dt),
                   desc='Time windows', unit='win', leave=None,
                   total=len(list(datetime_range(sunset, sunrise, dt)))):
+        site.set_t(t)
         # Form all the possible conjunction pairs
         conj = [
             c for c in tqdm((Conjunction(site.observe(t, p), site.observe(t, q), constraint)
