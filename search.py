@@ -13,7 +13,8 @@ import re
 import time
 from tqdm import tqdm
 import argparse
-
+import concurrent.futures
+import itertools
 
 def datetime_range(start, end, delta):
     current = start
@@ -71,18 +72,20 @@ def angular_distance(va, vb):
     return np.arctan(np.sqrt((c2*slam)**2 + (c1*s2 - s1*c2*clam)**2) / (s1*s2 + c1*c2*clam))
 
 
-def load_stars(max_magnitude):
+def load_stars(max_magnitude, verbose=False):
     """Load the Hipparcos catalog data and find all applicable stars.  Returns a
     list of StarObs, one per star.
     """
-    print("[  CATALOG] Loading star catalog data.")
+    if verbose:
+        print("[  CATALOG] Loading star catalog data.")
     with load.open(hipparcos.URL) as f:
         df = hipparcos.load_dataframe(f)
 
         df = df[df['magnitude'] <= max_magnitude]
         df = df[df['ra_degrees'].notnull()]
 
-        print(f'[  CATALOG] Found {len(df)} stars brighter than magnitude {max_magnitude:.4f}.')
+        if verbose:
+            print(f'[  CATALOG] Found {len(df)} stars brighter than magnitude {max_magnitude:.4f}.')
         return [StarObs(str(idx), Star.from_dataframe(df.loc[idx]), df.loc[idx].magnitude)
                 for idx in df.index]
 
@@ -158,7 +161,7 @@ class Site:
         self.name = name
         lat_value, lon_value = ll_string_to_float(lat), ll_string_to_float(lon)
         self.timezone = pytz.timezone(tzwhere.tzwhere().tzNameAt(lat_value, lon_value))
-        print(f"Time zone at {name}: {self.timezone}")
+        # print(f"Time zone at {name}: {self.timezone}")
 
     def localize(self, some_time):
         return self.timezone.localize(some_time)
@@ -239,8 +242,9 @@ class SolarSystemBody():
         return self.ephem_obj.radius
 
 
-def load_solar_system():
-    print("[EPHEMERIS] Loading ephemeris data for planets / moon / Pluto.")
+def load_solar_system(verbose=False):
+    if verbose:
+        print("[EPHEMERIS] Loading ephemeris data for planets / moon / Pluto.")
     planet_barycenters = load('de430.bsp')
 
     return [
@@ -354,7 +358,7 @@ def sort_conjunctions_by_score(conjunctions):
     return sorted(conjunctions, key=lambda x: x.score())
 
 
-def scan_night(site, day, constraint):
+def scan_night(site, day, constraint, offset=1):
     t0 = time.perf_counter()
     dt = timedelta(minutes=30)
     sunset, sunrise = site.next_set_rise(day)
@@ -362,7 +366,7 @@ def scan_night(site, day, constraint):
     conjunctions = {}
     num_conjunctions = len(solar_system) * len(sky_objects)
     for t in tqdm(datetime_range(sunset, sunrise, dt),
-                  desc='Time windows', unit='win', leave=None,
+                  desc='Time windows', unit='win', leave=None, position=offset*2-1,
                   total=len(list(datetime_range(sunset, sunrise, dt)))):
         site.set_t(t)
         # Form all the possible conjunction pairs
@@ -374,7 +378,7 @@ def scan_night(site, day, constraint):
                              for q in sky_objects
                              if p != q),
                             desc='Conjunctions scanned', unit='conj', leave=None,
-                            total=num_conjunctions)
+                            total=num_conjunctions, position=offset*2)
             if c.valid()
 
         ]
@@ -397,22 +401,42 @@ def scan_night(site, day, constraint):
     return sort_conjunctions_by_score(outputs), t1 - t0
 
 
-def scan_days(location, t0_, t1_, constraint=Constraint(5.0, 1 * np.pi / 180, 3.0)):
+def do_scan(day, constraint, offset):
+    best, elapsed = scan_night(location, day, constraint=constraint, offset=offset)
+    return best, elapsed, day
+
+
+def scan_days(t0_, t1_, constraint, args=None, max_workers=None):
     t0 = location.localize(t0_)
     t1 = location.localize(t1_)
 
     dday = timedelta(days=1)
 
-    best_conjunctions = {}
-
     print(f"[   SEARCH] Scanning nights from {t0} to {t1}")
     print(f"[   SEARCH] This will take a while!")
+
+    best_conjunctions = {}
     calc_times = []
-    for day in tqdm(datetime_range(t0, t1, dday),
-                    desc='Nights', unit='night', leave=None,
-                    total=len(list(datetime_range(t0, t1, dday)))):
-        best_conjunctions[day], calc_time = scan_night(location, day, constraint)
-        calc_times.append(calc_time)
+
+    num_days = len(list(datetime_range(t0, t1, dday)))
+    if not max_workers or max_workers > 1:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers,
+                                                    initializer=setup_global_data,
+                                                    initargs=[args]) as executor:
+            for best, elapsed, day in tqdm(executor.map(do_scan,
+                                                        datetime_range(t0, t1, dday),
+                                                        itertools.repeat(constraint),
+                                                        range(1, num_days + 1)),
+                                      desc='Nights', unit='night', leave=None,
+                                      total=num_days):
+                best_conjunctions[day] = best
+                calc_times.append(elapsed)
+    else:
+        # Serial
+        for day in tqdm(datetime_range(t0, t1, dday),
+                        desc='Nights', unit='night', leave=None, total=num_days):
+            best_conjunctions[day], elapsed = scan_night(location, day, constraint=constraint)
+            calc_times.append(elapsed)
 
     mean_time_per_night = np.mean(calc_times)
     total_time = np.sum(calc_times)
@@ -450,6 +474,11 @@ By default:
  - end date is one week from now ({date.today() + timedelta(days=7)}).
 
 Other default values are displayed below in parentheses.
+
+Please note that the progress output is a bit wonky when manually setting
+max_workers values greater than one and fewer than the number of cores.  We
+apologize for the inconvenience.
+
 """, formatter_class=argparse.RawTextHelpFormatter)
     ## Observation setup
     obs_options = parser.add_argument_group('OBSERVER CONFIGURATION')
@@ -486,19 +515,40 @@ Other default values are displayed below in parentheses.
     search_options.add_argument('--max-angle', metavar='MAXANGLE',
                                 type=float, default=1.0,
                                 help='Maximum planet/moon magnitude to consider when searching in degrees (%(default)s)')
+    par_group = search_options.add_mutually_exclusive_group()
+    par_group.add_argument('--serial', action='store_true',
+                           help='Search nights serially (default is to do it in parallel)')
+    par_group.add_argument('--max-processes', metavar='N', type=int,
+                           help='Maximum number of parallel searchers to run (default is the number of cores)')
 
     return parser.parse_args()
+
+
+def setup_global_data(args, verbose=False):
+    global solar_system
+    solar_system = load_solar_system(verbose=verbose)
+    stars = load_stars(max_magnitude=args.max_star_magnitude, verbose=verbose)
+    global sky_objects
+    sky_objects = solar_system + stars
+
+    global location
+    location = Site(args.latitude, args.longitude, args.site_name)
+
+    return location, solar_system, sky_objects
+
+
+def compute_max_workers(args):
+    if args.serial:
+        return 1
+    if args.max_processes:
+        return args.max_processes
+    return None
 
 
 if __name__ == '__main__':
     args = get_args()
 
-    solar_system = load_solar_system()
-    stars = load_stars(max_magnitude=args.max_star_magnitude)
-
-    sky_objects = solar_system + stars
-
-    brisbane = Site(args.latitude, args.longitude, args.site_name)
+    location, solar_system, sky_objects = setup_global_data(args, verbose=True)
 
     t0 = datetime.combine(args.start_date, datetime.min.time())
     t1 = datetime.combine(args.end_date
@@ -506,8 +556,10 @@ if __name__ == '__main__':
                           else args.start_date + timedelta(days=args.num_nights),
                           datetime.min.time())
 
-    results = scan_days(brisbane, t0, t1,
+    results = scan_days(t0, t1,
                         constraint=Constraint(args.max_magnitude,
                                               args.max_angle * np.pi / 180,
-                                              args.max_magnitude_delta))
-    display_results(results, brisbane, t0, t1)
+                                              args.max_magnitude_delta),
+                        args=args,
+                        max_workers=compute_max_workers(args))
+    display_results(results, location, t0, t1)
