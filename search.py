@@ -1,6 +1,6 @@
 import numpy as np
 import ephem  # for magnitude calculations
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from skyfield.api import Star, load, Topos, utc
 from skyfield.data import hipparcos
 from skyfield.units import Angle
@@ -10,6 +10,7 @@ from tzwhere import tzwhere
 import re
 import time
 from tqdm import tqdm
+import argparse
 
 
 def datetime_range(start, end, delta):
@@ -36,7 +37,7 @@ def angular_distance(va, vb):
     return np.arctan(np.sqrt((c2*slam)**2 + (c1*s2 - s1*c2*clam)**2) / (s1*s2 + c1*c2*clam))
 
 
-def load_stars(max_magnitude=5):
+def load_stars(max_magnitude):
     """Load the Hipparcos catalog data and find all applicable stars.  Returns a
     list of StarObs, one per star.
     """
@@ -123,7 +124,7 @@ class Site:
         self.name = name
         lat_value, lon_value = ll_string_to_float(lat), ll_string_to_float(lon)
         self.timezone = pytz.timezone(tzwhere.tzwhere().tzNameAt(lat_value, lon_value))
-        print(f"Time zone in {name}: {self.timezone}")
+        print(f"Time zone at {name}: {self.timezone}")
 
     def localize(self, some_time):
         return self.timezone.localize(some_time)
@@ -431,18 +432,78 @@ def float_to_lon_string(value):
     return f"{magnitude} {cardinal}"
 
 
+def parse_date(s):
+    return datetime.datetime.strptime(s, '%Y-%m-%d')
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description=f"""
+Search for astronomical conjunctions.
+
+By default:
+ - location is Brisbane, QLD, Australia.
+ - start date is tonight ({date.today()}).
+ - end date is one week from now ({date.today() + timedelta(days=7)}).
+
+Other default values are displayed below in parentheses.
+""", formatter_class=argparse.RawTextHelpFormatter)
+    ## Observation setup
+    obs_options = parser.add_argument_group('OBSERVER CONFIGURATION')
+    obs_options.add_argument('-a', '--latitude', metavar='LAT', default='27.49665 S',
+                             help='Latitude of the observation location ("%(default)s")')
+    obs_options.add_argument('-o', '--longitude', metavar='LON', default='152.9883 E',
+                             help='Longitude of the observation location ("%(default)s")')
+    obs_options.add_argument('--site-name', metavar='NAME',
+                             default='Home',
+                             help='Name of the observing site (just makes output prettier) (%(default)s)')
+
+    ## Search setup
+    search_options = parser.add_argument_group('SEARCH CONFIGURATION')
+    search_options.add_argument('--start-date', metavar='START',
+                             type=parse_date, default=date.today(),
+                             help='Date of the first night (sunset) to search (%(default)s)')
+    group = search_options.add_mutually_exclusive_group()
+    group.add_argument('--num-nights', metavar='NIGHTS',
+                       type=int, default=7,
+                       help='Number of nights after the start date to search (%(default)s)')
+    group.add_argument('--end-date', metavar='END',
+                       type=parse_date,
+                       help='Date of the last sunrise up to which to search (calculated from --num-nights)')
+
+    search_options.add_argument('--max-star-magnitude', metavar='MAXSTARMAG',
+                                type=float, default=4.0,
+                                help='Maximum star magnitude to consider when searching (%(default)s)')
+    search_options.add_argument('--max-magnitude', metavar='MAXMAG',
+                                type=float, default=5.0,
+                                help='Maximum planet/moon magnitude to consider when searching (%(default)s)')
+    search_options.add_argument('--max-magnitude-delta', metavar='DELTA',
+                                type=float, default=3.0,
+                                help='Maximum magnitude discrepancy (between objects in a conjunction) to consider when searching (%(default)s)')
+    search_options.add_argument('--max-angle', metavar='MAXANGLE',
+                                type=float, default=1.0,
+                                help='Maximum planet/moon magnitude to consider when searching in degrees (%(default)s)')
+
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
+    args = get_args()
+
     solar_system = load_solar_system()
-    stars = load_stars(max_magnitude=3)
+    stars = load_stars(max_magnitude=args.max_star_magnitude)
 
     sky_objects = solar_system + stars
 
-    brisbane_lat_string, brisbane_lon_string = '27.49665 S', '152.9883 E'
+    brisbane = Site(args.latitude, args.longitude, args.site_name)
 
-    brisbane = Site(brisbane_lat_string, brisbane_lon_string, "Brisbane")
+    t0 = datetime.combine(args.start_date, datetime.min.time())
+    t1 = datetime.combine(args.end_date
+                          if args.end_date
+                          else args.start_date + timedelta(days=args.num_nights),
+                          datetime.min.time())
 
-    t0 = datetime(2019, 9, 11)
-    t1 = datetime(2019, 9, 12)
-
-    results = scan_days(brisbane, t0, t1)
+    results = scan_days(brisbane, t0, t1,
+                        constraint=Constraint(args.max_magnitude,
+                                              args.max_angle * np.pi / 180,
+                                              args.max_magnitude_delta))
     display_results(results, brisbane, t0, t1)
