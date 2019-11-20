@@ -90,6 +90,24 @@ def load_stars(max_magnitude, verbose=False):
                 for idx in df.index]
 
 
+def load_solar_system(verbose=False):
+    if verbose:
+        print("[EPHEMERIS] Loading ephemeris data for planets / moon / Pluto.")
+    planet_barycenters = load('de430.bsp')
+
+    return [
+        SolarSystemBody('Mercury', planet_barycenters['mercury'], ephem.Mercury()),
+        SolarSystemBody('Venus', planet_barycenters['venus'], ephem.Venus()),
+        SolarSystemBody('Moon', planet_barycenters['moon'], ephem.Moon()),
+        SolarSystemBody('Mars', load('mar097.bsp')['mars'], ephem.Mars()),
+        SolarSystemBody('Jupiter', load('jup310.bsp')['jupiter'], ephem.Jupiter()),
+        SolarSystemBody('Saturn', load('sat319.bsp')['saturn'], ephem.Saturn()),
+        SolarSystemBody('Uranus', load('ura111.bsp')['uranus'], ephem.Uranus()),
+        SolarSystemBody('Neptune', load('nep081.bsp')['neptune'], ephem.Neptune()),
+        SolarSystemBody('Pluto', load('plu055.bsp')['pluto'], ephem.Pluto()),
+    ]
+
+
 class Observation:
     def __init__(self, time, site, obj, magnitude, radius):
         self.t = time
@@ -240,24 +258,6 @@ class SolarSystemBody():
 
     def get_radius(self):
         return self.ephem_obj.radius
-
-
-def load_solar_system(verbose=False):
-    if verbose:
-        print("[EPHEMERIS] Loading ephemeris data for planets / moon / Pluto.")
-    planet_barycenters = load('de430.bsp')
-
-    return [
-        SolarSystemBody('Mercury', planet_barycenters['mercury'], ephem.Mercury()),
-        SolarSystemBody('Venus', planet_barycenters['venus'], ephem.Venus()),
-        SolarSystemBody('Moon', planet_barycenters['moon'], ephem.Moon()),
-        SolarSystemBody('Mars', load('mar097.bsp')['mars'], ephem.Mars()),
-        SolarSystemBody('Jupiter', load('jup310.bsp')['jupiter'], ephem.Jupiter()),
-        SolarSystemBody('Saturn', load('sat319.bsp')['saturn'], ephem.Saturn()),
-        SolarSystemBody('Uranus', load('ura111.bsp')['uranus'], ephem.Uranus()),
-        SolarSystemBody('Neptune', load('nep081.bsp')['neptune'], ephem.Neptune()),
-        SolarSystemBody('Pluto', load('plu055.bsp')['pluto'], ephem.Pluto()),
-    ]
 
 
 class StarObs():
