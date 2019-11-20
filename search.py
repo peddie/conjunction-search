@@ -241,7 +241,7 @@ class SolarSystemBody():
         self.ephem_obj = ephem_obj
 
     def __str__(self):
-        return f'SolarSystemBody({self.name})'
+        return f'{self.name}'
 
     def __repr__(self):
         return self.__str__()
@@ -267,7 +267,7 @@ class StarObs():
         self.magnitude = magnitude
 
     def __str__(self):
-        return f'StarObs({self.name}, mag {self.magnitude})'
+        return f'star {self.name}'
 
     def __repr__(self):
         return self.__str__()
@@ -350,7 +350,7 @@ magnitude difference: {self.__magnitude_difference():.3f} ({np.power(2.152, self
 
     def bodies(self):
         # Return bodies in normalized order
-        s = sorted([self.first_obs.body(), self.second_obs.body()])
+        s = sorted([self.first_obs.body(), self.second_obs.body()], key=lambda x: str(x))
         return (s[0], s[1])
 
 
