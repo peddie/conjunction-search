@@ -3,4 +3,4 @@ ephem==3.7.7.0
 skyfield==1.11
 pytz==2019.1
 tzwhere==3.0.3
-tqdm==4.24.0
+tqdm
