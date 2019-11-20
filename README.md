@@ -8,7 +8,7 @@ Requirements
 
 It's written in python 3.  You can get the needed libraries by
 
-    pip install -r requirements.txt
+    pip3 install -r requirements.txt
 
 You might have to either prefix this with `sudo` or also use the `--user` flag;
 I haven't yet understood the right approach, if one exists.
