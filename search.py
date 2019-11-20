@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import numpy as np
 import ephem  # for magnitude calculations
 from datetime import datetime, timedelta, date
