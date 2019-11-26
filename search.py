@@ -403,7 +403,7 @@ def scan_night(site, day, constraint, offset=1):
 
 def do_scan(day, constraint, offset):
     best, elapsed = scan_night(location, day, constraint=constraint, offset=offset)
-    return best, elapsed, day
+    return [str(c) for c in best], elapsed, day
 
 
 def scan_days(t0_, t1_, constraint, args=None, max_workers=None):
@@ -459,9 +459,9 @@ def display_results(results, site, t0, t1, best=5):
             continue
         print(night, f'({num_conjunctions} event{"" if num_conjunctions == 1 else "s"})')
         if num_conjunctions < best:
-            print(sort_conjunctions_by_score(conjunctions))
+            [print(c) for c in conjunctions]
         else:
-            print(sort_conjunctions_by_score(conjunctions)[0:best])
+            [print(c) for c in conjunctions[0:best]]
 
 
 def get_args():
