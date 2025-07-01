@@ -8,7 +8,7 @@ from skyfield.data import hipparcos
 from skyfield.units import Angle
 from skyfield import almanac
 import pytz
-from tzwhere import tzwhere
+from timezonefinder import TimezoneFinder
 import re
 import time
 from tqdm import tqdm
@@ -178,8 +178,7 @@ class Site:
         self.ts = load.timescale()
         self.name = name
         lat_value, lon_value = ll_string_to_float(lat), ll_string_to_float(lon)
-        self.timezone = pytz.timezone(tzwhere.tzwhere().tzNameAt(lat_value, lon_value))
-        # print(f"Time zone at {name}: {self.timezone}")
+        self.timezone = pytz.timezone(TimezoneFinder().timezone_at(lat=lat_value, lng=lon_value))
 
     def localize(self, some_time):
         return self.timezone.localize(some_time)
@@ -334,6 +333,8 @@ class Conjunction():
         magnitude_difference = self.__magnitude_difference()
         max_magnitude = self.__max_magnitude()
 
+        # We want the minimum score for all three of these terms,
+        # because negative magnitudes are brighter
         return distance + magnitude_difference + max_magnitude
 
     def __str__(self):
